@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
 use std::io::{self, prelude::*};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
@@ -81,5 +82,17 @@ impl UHIDDevice<File> {
         let event: [u8; UHID_EVENT_SIZE] = InputEvent::Create(params).into();
         handle.write_all(&event)?;
         Ok(UHIDDevice { handle })
+    }
+}
+
+impl<T: Read + Write + AsFd> AsFd for UHIDDevice<T> {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.handle.as_fd()
+    }
+}
+
+impl<T: Read + Write + AsRawFd> AsRawFd for UHIDDevice<T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.handle.as_raw_fd()
     }
 }
