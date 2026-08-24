@@ -1,34 +1,111 @@
-# uhid-virt
+# uhid-virt-ng
 
-uhid-virt provides a safe wrapper around uhid-sys
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![MSRV: 1.93](https://img.shields.io/badge/MSRV-1.93-orange.svg)](https://blog.rust-lang.org)
+[![Rust Edition: 2024](https://img.shields.io/badge/Rust-Edition%202024-purple.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/)
 
-Forked from uhid-fs, so what changed? Removal of `ArrayVec` dependency, and attempts to write
-in to borrows slices rather than creating and cloning new vectors everywhere. Where possible
-it tries to be an almost drop-in replacement for [tokio_linux_uhid](https://crates.io/crates/tokio-linux-uhid).
+Safe, zero-dependency Rust interface to Linux UHID (user-space HID transport drivers) through `/dev/uhid`.
+
+---
+
+## Key Features
+
+- **Zero External Dependencies**: Pure Rust implementation with self-contained Linux kernel ABI definitions (`<linux/uhid.h>`).
+- **Rust Edition 2024 & MSRV 1.93**: Idiomatic modern Rust, safe Unix file descriptor integration (`std::os::fd::{AsFd, AsRawFd}`).
+- **Memory-Safe & Sound**: Eliminates unaligned references, bounds-checks all raw kernel buffers, and enforces strict linter compliance.
+- **Fast & Minimalist**: Zero proc-macro compile overhead and optimized memory operations.
+- **Full Protocol Coverage**: Implements all UHID commands (`UHID_CREATE2`, `UHID_INPUT2`, `UHID_OUTPUT`, `UHID_GET_REPORT`, `UHID_SET_REPORT`, etc.).
+
+---
 
 ## What is UHID?
 
-UHID lets you write userspace drivers for HID devices in Linux. No need for a kernel module, just run your program and you can register an HID device.
+Linux UHID allows user-space processes to implement HID transport drivers. Without writing a kernel module, you can register virtual HID devices directly with the kernel HID subsystem.
 
-There are a lot of things you can do with this, to name a few:
+Typical use cases:
+- Emulating mice, keyboards, gamepads, or custom touchpads in user space.
+- Forwarding input events across software daemons (e.g. system control daemons).
+- Reverse engineering and implementing drivers for hardware with non-standard protocols.
+- Automated testing and hardware simulation in CI/CD environments.
 
-* Forwarding or emulating keypresses through [control daemon](https://gitlab.com/flukejones/rog-core)
-* Emulate a mouse/keyboard for shortcuts/macros/task automation (independent of X11/Wayland/system console)
-* Add support for HID devices that are only supported on Windows / other platforms
-* Write drivers for a new HID device (i.e. [DIY Arduino water touchpad](https://www.open-electronics.org/guest_projects/diy-0-water-touchpad/))
+For kernel details, see the [Linux Kernel UHID documentation](https://www.kernel.org/doc/html/latest/hid/uhid.html).
 
-### Kernel Docs Description
+---
 
-> UHID allows user-space to implement HID transport drivers. Please see [hid-transport.html](https://www.kernel.org/doc/html/latest/hid/hid-transport.html) for an introduction into HID transport drivers. This document relies heavily on the definitions declared there.
+## Quick Start
 
-> With UHID, a user-space transport driver can create kernel hid-devices for each device connected to the user-space controlled bus. The UHID API defines the I/O events provided from the kernel to user-space and vice versa.
+Add `uhid-virt-ng` to your `Cargo.toml`:
 
-See the [Kernel UHID doc page](https://www.kernel.org/doc/html/latest/hid/uhid.html) for a full explanation of the mechanics.
+```toml
+[dependencies]
+uhid-virt-ng = "0.0.1"
+```
 
+### Example: Virtual Mouse
 
-## Examples
+```rust
+use std::error::Error;
+use std::io;
+use uhid_virt_ng::{Bus, CreateParams, UHIDDevice};
 
-See the example folder. Sending a newline will make the mouse move to the right.
+// Minimal HID Mouse Report Descriptor (Report ID 1: Mouse buttons, X, Y, Wheel)
+const RDESC: [u8; 85] = [
+    0x05, 0x01, 0x09, 0x02, 0xa1, 0x01, 0x09, 0x01, 0xa1, 0x00,
+    0x85, 0x01, 0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00,
+    0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x81, 0x02, 0x95, 0x01,
+    0x75, 0x05, 0x81, 0x01, 0x05, 0x01, 0x09, 0x30, 0x09, 0x31,
+    0x09, 0x38, 0x15, 0x81, 0x25, 0x7f, 0x75, 0x08, 0x95, 0x03,
+    0x81, 0x06, 0xc0, 0xc0, 0x05, 0x01, 0x09, 0x06, 0xa1, 0x01,
+    0x85, 0x02, 0x05, 0x08, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00,
+    0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x91, 0x02, 0x95, 0x01,
+    0x75, 0x05, 0x91, 0x01, 0xc0,
+];
 
-See [flukejones/rog-core](https://gitlab.com/flukejones/rog-core) and 
-[sameer/gearvr-controller-uhid](https://github.com/sameer/gearvr-controller-uhid/) for a real-world use cases.
+fn main() -> Result<(), Box<dyn Error>> {
+    let params = CreateParams {
+        name: "virtual-uhid-mouse".to_string(),
+        phys: String::new(),
+        uniq: String::new(),
+        bus: Bus::USB,
+        vendor: 0x15d9,
+        product: 0x0a37,
+        version: 0,
+        country: 0,
+        rd_data: RDESC.to_vec(),
+    };
+
+    // Open /dev/uhid and register the virtual device
+    let mut dev = UHIDDevice::create(params)?;
+
+    // Report: [Report ID (1), Buttons, X-delta (+20), Y-delta (0), Wheel (0)]
+    let report: [u8; 5] = [1, 0, 20, 0, 0];
+
+    // Write input event to kernel
+    dev.write(&report)?;
+
+    Ok(())
+}
+```
+
+> **Note:** Accessing `/dev/uhid` typically requires root privileges or appropriate udev permissions (e.g. membership in the `input` group or custom udev rule).
+
+---
+
+## Running Tests
+
+```bash
+# Run unit test suite
+cargo test --all
+
+# Run strict clippy verification
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Check code formatting
+cargo fmt --all -- --check
+```
+
+---
+
+## License
+
+Distributed under the [MIT License](LICENSE).
