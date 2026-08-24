@@ -67,7 +67,8 @@ impl<T: Read + Write> UHIDDevice<T> {
     /// Returns an [`io::Error`] if writing to the underlying handle fails.
     pub fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         let event: [u8; UHID_EVENT_SIZE] = InputEvent::Input { data }.into();
-        self.handle.write(&event)
+        self.handle.write_all(&event)?;
+        Ok(UHID_EVENT_SIZE)
     }
 
     /// Writes a `SetReportReply` event in response to a `SetReport` output event from the kernel.
@@ -77,7 +78,8 @@ impl<T: Read + Write> UHIDDevice<T> {
     /// Returns an [`io::Error`] if writing to the underlying handle fails.
     pub fn write_set_report_reply(&mut self, id: u32, err: u16) -> io::Result<usize> {
         let event: [u8; UHID_EVENT_SIZE] = InputEvent::SetReportReply { id, err }.into();
-        self.handle.write(&event)
+        self.handle.write_all(&event)?;
+        Ok(UHID_EVENT_SIZE)
     }
 
     /// Writes a `GetReportReply` event with data in response to a `GetReport` output event from the kernel.
@@ -92,7 +94,8 @@ impl<T: Read + Write> UHIDDevice<T> {
         data: Vec<u8>,
     ) -> io::Result<usize> {
         let event: [u8; UHID_EVENT_SIZE] = InputEvent::GetReportReply { id, err, data }.into();
-        self.handle.write(&event)
+        self.handle.write_all(&event)?;
+        Ok(UHID_EVENT_SIZE)
     }
 
     /// Reads a queued output event from the kernel.
@@ -115,7 +118,8 @@ impl<T: Read + Write> UHIDDevice<T> {
     /// Returns an [`io::Error`] if writing the destroy command fails.
     pub fn destroy(&mut self) -> io::Result<usize> {
         let event: [u8; UHID_EVENT_SIZE] = InputEvent::Destroy.into();
-        self.handle.write(&event)
+        self.handle.write_all(&event)?;
+        Ok(UHID_EVENT_SIZE)
     }
 }
 

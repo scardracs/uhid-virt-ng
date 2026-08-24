@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::io;
+use std::io::{self, Write};
 use uhid_virt_ng::{Bus, CreateParams, UHIDDevice};
 
 const RDESC: [u8; 85] = [
@@ -64,16 +64,32 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let mut uhid_device = UHIDDevice::create(create_params)?;
+    println!(">>> Virtual UHID device registered successfully with Linux kernel!");
+    println!(">>> Press [ENTER] to move mouse right by +50 pixels (or type 'q' + ENTER to exit)");
 
     let button_flags = 0;
-    let mouse_abs_hor = 20;
-    let mouse_abs_ver = 0;
-    let wheel = 0;
-    let data: [u8; 5] = [1, button_flags, mouse_abs_hor, mouse_abs_ver, wheel];
+    let mouse_rel_x: u8 = 50;
+    let mouse_rel_y: u8 = 0;
+    let wheel: u8 = 0;
+    // Format: [Report ID (1), Buttons (0), Rel X (+50), Rel Y (0), Wheel (0)]
+    let report: [u8; 5] = [1, button_flags, mouse_rel_x, mouse_rel_y, wheel];
 
     let mut input = String::new();
     loop {
+        print!("> Press ENTER to move mouse (+50px) ... ");
+        io::stdout().flush()?;
+        input.clear();
         io::stdin().read_line(&mut input)?;
-        uhid_device.write(&data)?;
+
+        if input.trim() == "q" {
+            println!("Destroying UHID device and exiting...");
+            uhid_device.destroy()?;
+            break;
+        }
+
+        let bytes_written = uhid_device.write(&report)?;
+        println!("Sent {bytes_written} bytes to /dev/uhid (X=+50). Check cursor on screen!");
     }
+
+    Ok(())
 }
