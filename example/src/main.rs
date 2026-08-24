@@ -1,6 +1,6 @@
+use std::error::Error;
 use std::io;
-
-use uhid_virt::{Bus, CreateParams, UHIDDevice};
+use uhid_virt_ng::{Bus, CreateParams, UHIDDevice};
 
 const RDESC: [u8; 85] = [
     0x05, 0x01, /* USAGE_PAGE (Generic Desktop) */
@@ -49,12 +49,12 @@ const RDESC: [u8; 85] = [
     0xc0, /* END_COLLECTION */
 ];
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let rd_data = RDESC.to_vec();
     let create_params = CreateParams {
-        name: "test-uhid-device".to_string(),
-        phys: "".to_string(),
-        uniq: "".to_string(),
+        name: String::from("test-uhid-device"),
+        phys: String::new(),
+        uniq: String::new(),
         bus: Bus::USB,
         vendor: 0x15d9,
         product: 0x0a37,
@@ -63,7 +63,7 @@ fn main() {
         rd_data,
     };
 
-    let mut uhid_device = UHIDDevice::create(create_params).unwrap();
+    let mut uhid_device = UHIDDevice::create(create_params)?;
 
     let button_flags = 0;
     let mouse_abs_hor = 20;
@@ -73,7 +73,7 @@ fn main() {
 
     let mut input = String::new();
     loop {
-        io::stdin().read_line(&mut input).unwrap();
-        uhid_device.write(&data).unwrap();
+        io::stdin().read_line(&mut input)?;
+        uhid_device.write(&data)?;
     }
 }
